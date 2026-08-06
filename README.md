@@ -1,5 +1,16 @@
 # FinderCTL — Управление настройками macOS Finder
 
+## Быстрая установка
+
+```bash
+# Через Homebrew (рекомендуется)
+brew tap azatisakov/finderctl
+brew install finderctl
+
+# Или через uv/pip на macOS
+pipx install finderctl
+```
+
 ## Что это и зачем
 
 **FinderCTL** — это утилита командной строки для централизованного управления настройками Finder на macOS. 
