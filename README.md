@@ -1,118 +1,226 @@
-# FinderCTL
+# FinderCTL — Управление настройками macOS Finder
 
-Manage macOS Finder preferences safely with atomic backups, SHA-256 verification, and dry-run previews.
+## Что это и зачем
 
-## Installation
+**FinderCTL** — это утилита командной строки для централизованного управления настройками Finder на macOS. 
+
+### Проблема, которую решает
+
+Каждый раздел в Finder (рабочий стол, стандартные папки, iCloud, мусорное ведро) хранит свои собственные настройки просмотра:
+- Какую колонку сортировать по умолчанию?
+- Показывать ли размеры файлов и папок?
+- Видимые колонки и их ширина?
+- Где новые окна открываются?
+- Какая вью по умолчанию — списком, значками, галереей?
+
+Эти настройки разбросаны по `com.apple.finder.plist` (глобальные + контейнеры) и `.DS_Store` файлах в каждой папке. Ручная правка — утомительна и опасна: одна опечатка может сломать Finder или потерять конфигурацию.
+
+**FinderCTL решает это:**
+- Применяет единые настройки во все контейнеры единовременно
+- Автоматически создаёт бэкап перед каждым изменением
+- Проверяет целостность SHA-256 каждого бэкапа
+- Поддерживает preview (dry-run) — посмотри что изменится, прежде чем писать
+- Восстанавливает из бэкапа одной командой
+
+### Кому это нужно
+
+- **Инженеры и администраторы** — настройка одинакового окружения на нескольких Mac
+- **Дизайнеры и контент-менеджеры** — быстрая смена вью, колонок, сортировки
+- **Кто чистит рабочий стол** — скрыть жёсткие диски, серверы, внешние носители
+- **Кто хочет быстрый доступ к папкам** — сортировка папок сверху, открытие в домашней папке
+
+## Быстрая установка
 
 ```bash
 uv sync
 source .venv/bin/activate
 ```
 
-## Commands
+## Команды
 
-| Command | Description |
-|--------|-------------|
-| `finderctl status [--json]` | Show current Finder plist status, macOS/Finder versions, backup count |
-| `finderctl backup [--label NAME] [--no-verify] [--json]` | Create a verified backup of the Finder plist |
-| `finderctl restore [LABEL] [--restart/--no-restart] [--dry-run] [--json]` | Restore from a backup by label or latest |
-| `finderctl apply FIELD VALUE [--scope SCOPE] [--no-restart] [--dry-run] [--json]` | Apply a single setting to a scoped container |
-| `finderctl apply-defaults [--no-restart] [--dry-run] [--json]` | Apply full default List View configuration |
-| `finderctl clean [--keep N] [--verify] [--dry-run] [--json]` | Prune old/invalid backups |
-| `finderctl doctor [--fix] [--json]` | Run diagnostics on plist, backups, Finder process |
-| `finderctl enforce [-p PATH] [--dry-run] [--rollback] [--json]` | Enforce List View settings across `.DS_Store` files (opt-in) |
+### `finderctl status`
+Проверить текущее состояние Finder и резервных копий.
 
-### Global options
+```bash
+finderctl status           # человеческий вывод
+finderctl status --json    # JSON для скриптов
+```
 
-| Flag | Description |
-|------|-------------|
-| `--verbose / -v` | Enable debug logging to stderr |
-| `--quiet / -q` | Suppress all but critical output |
-| `--json` | Emit JSON to stdout instead of human-readable text |
-| `--config / -c PATH` | Alternate config file path |
+Вы увидите: найден ли plist, доступен ли для чтения/записи, версия macOS и Finder, количество секций настроек, число бэкапов.
 
-## Configuration
+### `finderctl backup`
+Создать верифицированный бэкап текущего `com.apple.finder.plist`.
 
-All defaults are defined in `finderctl/config.py`:
+```bash
+finderctl backup --label pre-change      # с ярлыком
+finderctl backup --no-verify             # пропустить SHA-256 проверку (не рекомендуется)
+finderctl backup --json                  # вывести JSON
+```
 
-### `DESIRED_GLOBAL_PREFS`
-Global Finder preferences applied to all containers:
+Бэкапы хранятся в `~/.finderctl/backups/` с sidecar `.sha256` для проверки целостности.
+
+### `finderctl apply-defaults`
+Применить стандартные настройки FinderCTL ко всем контейнерам.
+
+```bash
+finderctl apply-defaults --dry-run --json  # посмотреть, что изменится
+finderctl apply-defaults --json            # применить
+```
+
+Это основная команда. Она:
+1. Создаёт бэкап `pre-apply-defaults`
+2. Устанавливает сортировку по дате изменения
+3. Включает расчёт размеров папок
+4. Синхронизирует 12 колонок (видимость, порядок, ширина)
+5. Устанавливает глобальные предпочтения (новое окно → домашняя папка, боковая панель, строка состояния и т.д.)
+
+### `finderctl apply`
+Применить одну конкретную настройку к выбранному объёму.
+
+```bash
+# Сортировка по дате везде
+finderctl apply --scope all sortColumn dateModified --no-restart
+
+# Включить иконки в папках на iCloud
+finderctl apply --scope icloud showIconPreview True
+
+# Скрыть предпросмотр иконок в мусорке
+finderctl apply --scope trash showIconPreview False
+
+# Индивидуальная папка
+finderctl apply --scope folder:Documents iconSize 32
+```
+
+**Доступные scope:**
+| Scope | Что затрагивает |
+|-------|----------------|
+| `default` | Корневой шаблон (`FK_DefaultListViewSettingsV2`) |
+| `all` | Все контейнеры сразу |
+| `standard` | Стандартные папки (рабочий стол, документы и т.д.) |
+| `desktop` | Только рабочий стол |
+| `icloud` | Только iCloud Drive |
+| `trash` | Мусорное ведро |
+| `package` | Пакеты (приложения, dmg) |
+| `folder:<key>` | Индивидуальная папка |
+
+**Разрешённые поля:**
+- `sortColumn` — по чём сортировать (`name`, `dateModified`, `size`, `kind` и др.)
+- `calculateAllSizes` — считать размеры папок (True/False)
+- `showIconPreview` — показывать эскизы файлов (True/False)
+- `useRelativeDates` — относительные даты (сегодня, вчера) (True/False)
+- `textSize` — размер текста
+- `iconSize` — размер иконок
+- `viewOptionsVersion` — версия настроек вью
+
+### `finderctl clean`
+Очистить старые и повреждённые бэкапы.
+
+```bash
+finderctl clean --keep 5             # оставить 5 последних
+finderctl clean --keep 5 --verify    # перепроверить SHA-256 перед удалением
+finderctl clean --dry-run --json     # посмотреть, что удалится
+```
+
+### `finderctl restore`
+Восстановить настройки из бэкапа.
+
+```bash
+finderctl restore              # восстановить последний
+finderctl restore pre-change   # восстановить по ярлыку
+finderctl restore --dry-run    # посмотреть, что изменится
+```
+
+### `finderctl doctor`
+Диагностика: проверка plist, бэкапов, версии macOS.
+
+```bash
+finderctl doctor               # список проверок с иконками
+finderctl doctor --json      # JSON-отчёт
+finderctl doctor --fix       # попытаться исправить
+```
+
+### `finderctl enforce` (opt-in, Layer B)
+Настройка `.DS_Store` в папках. Finder хранит локальные настройки просмотра в скрытом файле `.DS_Store` в каждой папке. FinderCTL может синхронизовать эти настройки:
+
+```bash
+# Preview: что изменится в .DS_Store файлах домашней папки
+finderctl enforce -p ~ --dry-run --json
+
+# Применить изменения
+finderctl enforce -p ~/Documents
+
+# Откатить все изменения .истори
+finderctl enforce -p ~/Documents --rollback
+```
+
+## Как изменить настройки по умолчанию
+
+Все настройки находятся в `finderctl/config.py`. Измените — примените.
+
+### Глобальные предпочтения Finder
+
 ```python
-{
-    "NewWindowTarget": "PfHm",         # Open new windows in Home folder
-    "FXPreferredViewStyle": "Nlsv",     # Default to List view
-    "_FXSortFoldersFirst": True,        # Sort folders before files
-    "ShowSidebar": True,
-    "ShowStatusBar": True,
-    ...
+DESIRED_GLOBAL_PREFS = {
+    "NewWindowTarget": "PfHm",     # PfHm = домашняя папка, PfDesk = рабочий стол, PfVD = виртуальный десктоп
+    "FXPreferredViewStyle": "Nlsv", # Nlsv = список, Gvpt = значки, Flsr = галерея
+    "_FXSortFoldersFirst": True,    # Папки сверху
+    "ShowSidebar": True,            # Боковая панель
+    "ShowStatusBar": True,          # Строка состояния
+    "ShowPathbar": True,            # Путь в строке
+    "ShowPreviewPane": False,       # Предпросмотр ⌘+⌥+П
+    "ShowHardDrivesOnDesktop": True, # Жёсткие диски на рабочем столе
 }
 ```
 
-### `DESIRED_DEFAULT_LIST_VIEW`
-List View settings template applied to every container:
+### Настройки списка файлов
+
 ```python
-{
-    "sortColumn": "dateModified",       # Sort by modification date
-    "calculateAllSizes": True,           # Show calculated folder sizes
-    "columns": [                        # 12 standard columns
-        {"identifier": "name", "visible": True, "width": 187},
-        {"identifier": "dateModified", "visible": True, "width": 181},
-        ...
+DESIRED_DEFAULT_LIST_VIEW = {
+    "sortColumn": "dateModified",   # Сортировать по дате изменения
+    "calculateAllSizes": True,      # Показывать размеры папок
+    "columns": [
+      {"identifier": "name",         "visible": True,  "width": 187},
+      {"identifier": "dateModified", "visible": True,  "width": 181},
+      {"identifier": "size",         "visible": True,  "width": 97},
+      {"identifier": "kind",         "visible": True,  "width": 115},
+      # ... остальные колонки: дата создания, метка, версия, комментарии, дата добавления и т.д.
     ],
 }
 ```
 
-### `ALLOWED_FIELDS`
-Fields permitted for `finderctl apply`:
-```python
-{"sortColumn", "calculateAllSizes", "showIconPreview",
- "useRelativeDates", "textSize", "iconSize", "viewOptionsVersion"}
-```
-
-### `LIST_VIEW_CONTAINERS`
-Containers affected by `apply-defaults`:
-```python
-("StandardViewSettings", "FK_StandardViewSettings",
- "ICloudViewSettings", "TrashViewSettings")
-```
-
-## Changing Defaults
-
-1. Edit the desired dict in `finderctl/config.py`
-2. Preview changes:
-   ```bash
-   finderctl apply-defaults --dry-run --json
-   ```
-3. Apply:
-   ```bash
-   finderctl apply-defaults --json
-   ```
-
-A backup is automatically created before every write.
-
-## Apply Single Setting
+### Как применить
 
 ```bash
-# Scope options: default|all|standard|desktop|icloud|trash|package|folder:<key>
-finderctl apply --scope all sortColumn dateModified --no-restart
+# 1. Отредактировать finderctl/config.py
+# 2. Посмотреть, что изменится
+finderctl apply-defaults --dry-run --json
+
+# 3. Применить
+finderctl apply-defaults --json
 ```
 
-## Backup Management
+Бэкап создаётся автоматически перед каждым изменением.
+
+## Глобальные опции
+
+| Флаг | Описание |
+|------|----------|
+| `--verbose` / `-v` | Подробный вывод (debug логи в stderr) |
+| `--quiet` / `-q` | Только критические ошибки |
+| `--json` | JSON вместо человеческого вывода |
+| `--no-restart` | Не перезапускать Finder после изменения |
+
+## Требования
+
+- Python 3.13+
+- macOS 14+ (Sonoma) — 26+ (Tahoe)
+
+## Разработка
 
 ```bash
-finderctl backup --label pre-change
-finderctl clean --keep 5 --verify   # Keep 5 most recent, re-verify before pruning
-finderctl restore pre-change        # Restore by label
-```
-
-Backups are stored in `~/.finderctl/backups/` with `.sha256` sidecar files.
-
-## DS_Store Enforcement (Layer B)
-
-Opt-in command for patching `.DS_Store` files across a folder hierarchy:
-
-```bash
-finderctl enforce -p ~/Documents --dry-run --json
-finderctl enforce -p ~/Documents        # Apply changes
-finderctl enforce -p ~/Documents --rollback  # Restore from .finderctl.bak
+uv sync
+source .venv/bin/activate
+python -m pytest --cov
+mypy --strict finderctl/
+ruff check .
 ```
