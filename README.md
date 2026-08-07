@@ -329,6 +329,30 @@ finderctl apply-defaults --dry-run --json
 finderctl apply-defaults --json
 ```
 
+## Окружение и проверенные версии
+
+FinderCTL разрабатывается и тестируется на macOS Tahoe. Ниже актуальные данные окружения, на котором проверялась эта версия.
+
+| Компонент | Версия / значение |
+|---|---|
+| macOS | 26.6 (Tahoe) |
+| Finder | 26.4 |
+| Python | 3.13+ |
+| Архитектура | arm64 |
+| Рабочая директория | `/Users/zeefiles/Projects/FinderCTL` |
+| Бэкапы | `~/.finderctl/backups/` |
+| Конфиг | `finderctl/config.py` |
+| Homebrew tap | `azatisakov/finderctl` |
+| Деплой-тег | `v1.0.0` |
+
+### Установленные зависимости
+
+- `typer`
+- `ds-store`
+- `mac-alias`
+- `click`
+- `shellingham`
+
 ## Требования
 
 - macOS 14+ (Sonoma) — 26+ (Tahoe)
