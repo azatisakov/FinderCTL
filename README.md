@@ -23,10 +23,13 @@ Homebrew — самый простой способ. Устанавливает�
 # 1. Подключить tap
 brew tap azatisakov/finderctl
 
-# 2. Установить
+# 2. Доверить тапу (macOS Tahoe и новее)
+brew trust azatisakov/finderctl
+
+# 3. Установить
 brew install finderctl
 
-# 3. Проверить
+# 4. Проверить
 finderctl --help
 ```
 
