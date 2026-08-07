@@ -264,7 +264,9 @@ class DSService:
             self._apply_patches(writer, entries)
             writer.commit()
         except Exception as exc:
-            raise DSRevertibleError(f"failed to patch {ds_path}: {exc}") from exc
+            self.restore_dsstore(ds_path)
+            logger.warning("skipping corrupted %s: %s", ds_path, exc)
+            return []
 
         return self._plan_changes(entries, ds_path, has_root_lsvp)
 
